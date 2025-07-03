@@ -1,0 +1,192 @@
+<!-- admin-dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vows & Tales Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #fff0f5;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #d16ba5;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+    .login-container, .dashboard {
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+    input, select, button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    #logout-btn {
+      background: #d16ba5;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .card {
+      background: white;
+      border-left: 6px solid #d16ba5;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .field {
+      font-weight: bold;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vows & Tales Orders Dashboard</h1>
+  </header>
+
+  <div id="auth-container" class="login-container">
+    <input type="email" id="email" placeholder="Admin Email">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div class="dashboard" style="display:none;">
+    <div class="controls">
+      <input type="text" id="searchInput" placeholder="Search by email or order ID" oninput="loadData()">
+      <select id="statusFilter" onchange="loadData()">
+        <option value="">All Statuses</option>
+        <option value="pending">Pending</option>
+        <option value="reviewed">Reviewed</option>
+        <option value="delivered">Delivered</option>
+      </select>
+      <button id="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div id="data-container"></div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAVKo2H50Z_a7LgAEVUy1wEfjXfTEeA5q0",
+      authDomain: "vowsntales-89be6.firebaseapp.com",
+      projectId: "vowsntales-89be6",
+      storageBucket: "vowsntales-89be6.firebasestorage.app",
+      messagingSenderId: "463561682115",
+      appId: "1:463561682115:web:8fccbefa6d4f176fc28676",
+      measurementId: "G-GDE58EH2FQ"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          document.getElementById("auth-container").style.display = "none";
+          document.querySelector(".dashboard").style.display = "block";
+          loadData();
+        })
+        .catch(error => {
+          console.error("Login failed:", error);
+          alert("Login failed: " + error.message);
+        });
+    }
+
+    function logout() {
+      auth.signOut().then(() => location.reload());
+    }
+
+    function loadData() {
+      const search = document.getElementById("searchInput").value.toLowerCase();
+      const statusFilter = document.getElementById("statusFilter").value;
+
+      db.collection("orders").get().then(snapshot => {
+        console.log("Fetched orders count:", snapshot.size);
+        const container = document.getElementById("data-container");
+        container.innerHTML = "";
+
+        if (snapshot.empty) {
+          container.innerHTML = "<p>No orders found.</p>";
+          return;
+        }
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          console.log("Document:", doc.id, data);
+
+          const matchSearch = !search || 
+            (data.email && data.email.toLowerCase().includes(search)) || 
+            doc.id.toLowerCase().includes(search);
+
+          const matchStatus = !statusFilter || data.status === statusFilter;
+
+          if (matchSearch && matchStatus) {
+            const card = document.createElement("div");
+            card.className = "card";
+
+            card.innerHTML = `
+              <p><span class="field">Name:</span> ${data.name || "N/A"}</p>
+              <p><span class="field">Email:</span> ${data.email || "N/A"}</p>
+              <p><span class="field">Phone:</span> ${data.phone || "Not provided"}</p>
+              <p><span class="field">Project Type:</span> ${data.projectType || "N/A"}</p>
+              <p><span class="field">Deadline:</span> ${data.deadline || "N/A"}</p>
+              <details>
+                <summary><span class="field">Notes:</span> View</summary>
+                <p>${data.notes || "No notes provided"}</p>
+              </details>
+              <p><span class="field">Order ID:</span> ${doc.id}</p>
+              <p><span class="field">Status:</span>
+                <select onchange="updateStatus('${doc.id}', this.value)">
+                  <option value="pending" ${data.status === 'pending' ? 'selected' : ''}>Pending</option>
+                  <option value="reviewed" ${data.status === 'reviewed' ? 'selected' : ''}>Reviewed</option>
+                  <option value="delivered" ${data.status === 'delivered' ? 'selected' : ''}>Delivered</option>
+                </select>
+              </p>
+            `;
+            container.appendChild(card);
+          }
+        });
+      }).catch(error => {
+        console.error("Error loading data:", error);
+        document.getElementById("data-container").innerHTML = `<p style='color:red;'>Error loading orders: ${error.message}</p>`;
+      });
+    }
+
+    function updateStatus(docId, newStatus) {
+      db.collection("orders").doc(docId).update({ status: newStatus })
+        .then(() => console.log("Status updated"))
+        .catch(error => alert("Failed to update status: " + error.message));
+    }
+
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById("auth-container").style.display = "none";
+        document.querySelector(".dashboard").style.display = "block";
+        loadData();
+      }
+    });
+  </script>
+</body>
+</html>
